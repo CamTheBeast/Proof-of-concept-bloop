@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bloop — Flow-Based Interactive Prototype</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   ROOT & RESET
+═══════════════════════════════════════════ */
+:root {
+  --bg: #f2efe9;
+  --ink: #16211a;
+  --white: #ffffff;
+  --sage: #5a9970;
+  --sage-light: #9dc4aa;
+  --sage-pale: #e6f2eb;
+  --amber: #d4813a;
+  --amber-pale: #fdf0e3;
+  --red: #c0392b;
+  --red-pale: #fdecea;
+  --muted: #8a9e90;
+  --border: #ddd8d0;
+  --shadow: 0 8px 32px rgba(22,33,26,0.12);
+  --shadow-lg: 0 20px 64px rgba(22,33,26,0.18);
+  --r: 20px;
+  --r-sm: 12px;
+  --r-xs: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Instrument Sans', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ═══════════════════════════════════════════
+   TOP BAR
+═══════════════════════════════════════════ */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(242,239,233,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 56px;
+}
+.topbar-logo {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 1.25rem;
+  color: var(--ink);
+  letter-spacing: -0.5px;
+}
+.topbar-logo span { color: var(--sage); }
+.topbar-badge {
+  font-size: 0.68rem; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  background: var(--ink); color: var(--white);
+  padding: 4px 12px; border-radius: 99px;
+}
+.topbar-right { display: flex; gap: 10px; align-items: center; }
+.topbar-hint {
+  font-size: 0.75rem; color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.topbar-hint::before { content: '●'; color: var(--sage); font-size: 0.5rem; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* ═══════════════════════════════════════════
+   MAIN LAYOUT
+═══════════════════════════════════════════ */
+.layout {
+  display: flex;
+  padding-top: 56px;
+  min-height: 100vh;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 220px; flex-shrink: 0;
+  position: fixed; left: 0; top: 56px; bottom: 0;
+  background: var(--white);
+  border-right: 1px solid var(--border);
+  padding: 24px 14px;
+  overflow-y: auto;
+  z-index: 50;
+}
+.sidebar-section { margin-bottom: 24px; }
+.sidebar-label {
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 8px; padding: 0 8px;
+}
+.sidebar-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: var(--r-xs);
+  cursor: pointer; transition: all 0.18s;
+  font-size: 0.82rem; font-weight: 500; color: var(--muted);
+  text-decoration: none;
+}
+.sidebar-item:hover { background: var(--bg); color: var(--ink); }
+.sidebar-item.active { background: var(--sage-pale); color: var(--sage); font-weight: 600; }
+.sidebar-item .si-icon { font-size: 1rem; flex-shrink: 0; width: 22px; text-align: center; }
+.sidebar-item .si-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border); margin-left: auto; flex-shrink: 0;
+}
+.sidebar-item.active .si-dot { background: var(--sage); }
+.sidebar-item.visited .si-dot { background: var(--sage-light); }
+.sidebar-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* Flow progress bar */
+.flow-progress { padding: 0 8px; margin-bottom: 8px; }
+.flow-progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.flow-progress-fill { height: 100%; background: var(--sage); border-radius: 2px; transition: width 0.4s ease; }
+.flow-progress-label { font-size: 0.65rem; color: var(--muted); margin-top: 4px; }
+
+/* ── MAIN CONTENT ── */
+.main {
+  margin-left: 220px;
+  flex: 1;
+  padding: 32px 36px;
+  min-height: calc(100vh - 56px);
+  position: relative;
+}
+
+/* ═══════════════════════════════════════════
+   FLOW VIEW (default)
+═══════════════════════════════════════════ */
+.view { display: none; }
+.view.active { display: block; animation: viewIn 0.35s cubic-bezier(0.25,0.8,0.25,1); }
+@keyframes viewIn { from { opacity:0; transform: translateY(14px); } to { opacity:1; transform: translateY(0); } }
+
+/* ── FLOW HEADER ── */
+.flow-header { margin-bottom: 28px; }
+.flow-header .flow-number {
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+.flow-header .flow-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 2rem; font-weight: 800; color: var(--ink);
+  line-height: 1.1; margin-bottom: 8px;
+}
+.flow-header .flow-scenario {
+  background: var(--sage-pale);
+  border-left: 3px solid var(--sage);
+  padding: 10px 14px; border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  font-size: 0.82rem; color: var(--sage); line-height: 1.55;
+  max-width: 680px;
+}
+.flow-header .flow-scenario strong { font-weight: 600; }
+
+/* ── SCREEN FLOW CANVAS ── */
+.flow-canvas {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  overflow-x: auto;
+  padding-bottom: 20px;
+  margin-bottom: 28px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* ── SCREEN CARD ── */
+.screen-card {
+  flex-shrink: 0;
+  width: 180px;
+  cursor: pointer;
+  position: relative;
+}
+.screen-card .sc-frame {
+  background: var(--white);
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  transition: all 0.22s ease;
+  box-shadow: 0 2px 10px rgba(22,33,26,0.07);
+}
+.screen-card:hover .sc-frame,
+.screen-card.active .sc-frame {
+  border-color: var(--sage);
+  box-shadow: 0 0 0 3px rgba(90,153,112,0.15), var(--shadow);
+  transform: translateY(-3px);
+}
+.screen-card.active .sc-frame { border-color: var(--sage); background: var(--sage-pale); }
+.sc-topbar { background: var(--ink); height: 12px; display: flex; align-items: center; padding: 0 8px; gap: 4px; }
+.sc-topbar-pill { width: 24px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; }
+.sc-body { padding: 10px 10px; min-height: 120px; }
+.sc-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.65rem; font-weight: 700;
+  color: var(--muted); letter-spacing: 0.5px;
+  margin-top: 8px; text-align: center;
+}
+.screen-card.active .sc-label { color: var(--sage); }
+.sc-badge {
+  position: absolute; top: -6px; right: -6px;
+  background: var(--sage); color: white;
+  font-size: 0.55rem; font-weight: 700;
+  padding: 2px 7px; border-radius: 99px;
+  display: none;
+}
+.screen-card.active .sc-badge { display: block; }
+
+/* ── FLOW ARROW ── */
+.flow-arrow-wrap {
+  display: flex; align-items: center;
+  padding-top: 52px; flex-shrink: 0;
+}
+.flow-arrow-line {
+  display: flex; align-items: center; gap: 0;
+  width: 48px;
+}
+.flow-arrow-line .line { flex:1; height: 2px; background: var(--border); }
+.flow-arrow-line .arrowhead {
+  width: 0; height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid var(--border);
+}
+.flow-arrow-label {
+  font-size: 0.6rem; color: var(--muted);
+  text-align: center; margin-top: 4px;
+  white-space: nowrap;
+}
+.flow-arrow-wrap.branch { padding-top: 30px; flex-direction: column; align-items: center; }
+.flow-arrow-wrap.branch .flow-arrow-line { width: 2px; height: 32px; flex-direction: column; }
+.flow-arrow-wrap.branch .flow-arrow-line .line { width: 2px; flex:1; }
+.flow-arrow-wrap.branch .flow-arrow-line .arrowhead { border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--border); border-bottom: none; }
+
+/* ── DETAIL PANEL ── */
+.detail-panel {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 24px 28px;
+  max-width: 820px;
+  box-shadow: var(--shadow);
+  animation: panelIn 0.3s ease;
+}
+@keyframes panelIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+
+.detail-header {
+  display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px;
+}
+.detail-icon {
+  width: 48px; height: 48px; border-radius: var(--r-sm);
+  background: var(--sage-pale);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; flex-shrink: 0;
+}
+.detail-title-wrap .detail-screen-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.2rem; font-weight: 700; color: var(--ink); margin-bottom: 3px;
+}
+.detail-title-wrap .detail-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.detail-box {
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+}
+.detail-box .db-label {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 8px;
+}
+.detail-box .db-content { font-size: 0.8rem; line-height: 1.6; color: var(--ink); }
+.detail-box .db-content li { margin-left: 14px; margin-bottom: 2px; }
+
+.cta-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.cta-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 18px; border-radius: var(--r-xs);
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; border: none; transition: all 0.2s;
+  text-decoration: none;
+}
+.cta-btn.primary { background: var(--ink); color: white; }
+.cta-btn.primary:hover { background: var(--sage); }
+.cta-btn.secondary { background: var(--bg); color: var(--ink); border: 1.5px solid var(--border); }
+.cta-btn.secondary:hover { border-color: var(--sage); color: var(--sage); }
+.cta-btn.sage { background: var(--sage); color: white; }
+.cta-btn.sage:hover { background: #4a7f5e; }
+
+/* ═══════════════════════════════════════════
+   SCREEN MOCKUP CONTENT (mini previews)
+═══════════════════════════════════════════ */
+/* Generic mini components */
+.m-header { height: 18px; background: var(--bg); border-radius: 4px; margin-bottom: 6px; display:flex; align-items:center; gap:6px; padding: 0 4px; }
+.m-title { height: 8px; flex:1; background: var(--border); border-radius: 2px; }
+.m-avatar { width: 14px; height: 14px; border-radius: 50%; background: var(--border); flex-shrink:0; }
+.m-card { background: var(--sage); border-radius: 8px; height: 36px; margin-bottom: 5px; display:flex;align-items:center;padding:0 8px;gap:5px; }
+.m-card.amber { background: var(--amber); }
+.m-card.light { background: var(--bg); border: 1px solid var(--border); }
+.m-card-dot { width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,0.25);flex-shrink:0; }
+.m-card-lines { flex:1;display:flex;flex-direction:column;gap:3px; }
+.m-card-line { height:2px;background:rgba(255,255,255,0.5);border-radius:1px; }
+.m-card-line.dark { background: var(--border); }
+.m-row { display:flex;align-items:center;gap:4px;margin-bottom:4px; }
+.m-icon { width:14px;height:14px;background:var(--bg);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.6rem; }
+.m-lines { flex:1;display:flex;flex-direction:column;gap:2px; }
+.m-line { height:2px;background:var(--border);border-radius:1px; }
+.m-pill { height:8px;width:24px;background:var(--sage-pale);border-radius:4px;flex-shrink:0; }
+.m-pill.amber { background:var(--amber-pale); }
+.m-pill.red { background:var(--red-pale); }
+.m-bottom { display:flex;justify-content:space-around;padding-top:6px;border-top:1px solid var(--border);margin-top:4px; }
+.m-nav-icon { width:8px;height:8px;background:var(--border);border-radius:2px; }
+.m-nav-icon.active { background:var(--sage); }
+/* Chat specific */
+.m-msg { height:14px;border-radius:6px;margin-bottom:4px; }
+.m-msg.ai { background:var(--bg);width:80%;border-bottom-left-radius:2px; }
+.m-msg.user { background:var(--ink);width:65%;margin-left:auto;border-bottom-right-radius:2px; }
+.m-input { height:14px;background:var(--bg);border-radius:99px;border:1px solid var(--border); }
+/* Splash */
+.m-splash { background:linear-gradient(145deg,#16211a,#2a4030);min-height:120px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px; }
+.m-splash-dot { width:16px;height:16px;background:var(--sage);border-radius:50%; }
+.m-splash-bar { height:6px;width:48px;background:rgba(255,255,255,0.2);border-radius:3px; }
+.m-splash-bar.sm { width:32px;background:rgba(255,255,255,0.1); }
+/* Share */
+.m-share-box { background:var(--bg);border:1px dashed var(--sage-light);border-radius:6px;height:16px;margin:4px 0; }
+/* Docs */
+.m-doc { display:flex;align-items:center;gap:4px;margin-bottom:4px; }
+.m-doc-thumb { width:14px;height:14px;background:var(--bg);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.55rem; }
+
+/* ═══════════════════════════════════════════
+   MODAL OVERLAY
+═══════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(22,33,26,0.55);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+
+.modal-box {
+  background: var(--white);
+  border-radius: var(--r);
+  padding: 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow: hidden;
+  transform: scale(0.92) translateY(20px);
+  transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: var(--shadow-lg);
+}
+.modal-overlay.open .modal-box { transform: scale(1) translateY(0); }
+
+.modal-topbar {
+  background: var(--ink);
+  height: 32px; display: flex; align-items: center;
+  padding: 0 16px; gap: 6px;
+}
+.modal-topbar-pill { width: 48px; height: 6px; background: rgba(255,255,255,0.15); border-radius: 3px; }
+.modal-topbar-time { font-size: 0.62rem; color: rgba(255,255,255,0.5); margin-right: auto; }
+.modal-close {
+  position: absolute; top: 12px; right: 12px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none; cursor: pointer; color: white;
+  font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.modal-close:hover { background: rgba(255,255,255,0.2); }
+.modal-body { padding: 22px 22px 26px; overflow-y: auto; max-height: calc(88vh - 32px); }
+
+/* Modal screen styles */
+.m-screen-header { margin-bottom: 16px; }
+.m-screen-title { font-family: 'Syne', sans-serif; font-size: 1.3rem; font-weight: 700; margin-bottom: 3px; }
+.m-screen-sub { font-size: 0.78rem; color: var(--muted); }
+
+.m-pet-card {
+  background: linear-gradient(135deg, var(--sage) 0%, #3d7a57 100%);
+  border-radius: var(--r-sm); padding: 16px; color: white; margin-bottom: 14px;
+}
+.m-pet-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.m-pet-avatar { width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.2); display:flex;align-items:center;justify-content:center; font-size:1.5rem; flex-shrink:0; }
+.m-pet-name { font-family:'Syne',sans-serif; font-size: 1.1rem; font-weight: 700; }
+.m-pet-breed { font-size: 0.73rem; opacity: 0.8; }
+.m-pet-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+.m-pet-stat { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 7px; text-align: center; }
+.m-pet-stat .v { font-size: 0.95rem; font-weight: 700; }
+.m-pet-stat .l { font-size: 0.6rem; opacity: 0.75; }
+
+.m-reminder { display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:var(--r-xs);margin-bottom:8px; }
+.m-reminder-icon { font-size: 1.1rem; flex-shrink:0; }
+.m-reminder-title { font-size: 0.82rem; font-weight: 600; }
+.m-reminder-date { font-size: 0.7rem; color: var(--muted); }
+.m-pill { display:inline-block;padding:2px 8px;border-radius:99px;font-size:0.68rem;font-weight:600; }
+.m-pill.green { background:#e3f5eb;color:#2e7d5a; }
+.m-pill.orange { background:var(--amber-pale);color:var(--amber); }
+.m-pill.red { background:var(--red-pale);color:var(--red); }
+
+/* Alert banner */
+.m-alert { background:var(--red-pale);border-radius:var(--r-xs);padding:10px 12px;display:flex;gap:8px;margin-bottom:12px; }
+.m-alert-icon { font-size:1.1rem;flex-shrink:0;margin-top:1px; }
+.m-alert-text { font-size:0.78rem;color:var(--red);line-height:1.5; }
+
+/* Chat */
+.m-chat-msg { font-size:0.78rem;line-height:1.55;padding:9px 12px;border-radius:14px;margin-bottom:8px; }
+.m-chat-msg.ai { background:var(--bg);color:var(--ink);border-bottom-left-radius:3px;max-width:90%; }
+.m-chat-msg.user { background:var(--ink);color:white;border-bottom-right-radius:3px;max-width:80%;margin-left:auto; }
+.m-chat-name { font-size:0.62rem;color:var(--sage);font-weight:700;margin-bottom:3px; }
+.m-chat-input-row { display:flex;gap:8px;align-items:center;margin-top:4px; }
+.m-chat-input { flex:1;border:1.5px solid var(--border);border-radius:99px;padding:9px 14px;font-size:0.78rem;font-family:'Instrument Sans',sans-serif;background:var(--bg);outline:none;color:var(--ink); }
+.m-chat-send { width:34px;height:34px;border-radius:50%;background:var(--ink);border:none;cursor:pointer;font-size:0.85rem;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
+
+/* Docs */
+.m-doc-item { display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg);border-radius:var(--r-xs);margin-bottom:7px;cursor:pointer;transition:transform 0.15s; }
+.m-doc-item:hover { transform:translateX(3px); }
+.m-doc-thumb { width:34px;height:34px;border-radius:8px;background:var(--white);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;border:1px solid var(--border); }
+.m-doc-name { font-size:0.8rem;font-weight:600; }
+.m-doc-meta { font-size:0.68rem;color:var(--muted); }
+
+/* Share */
+.m-share-preview { background:var(--bg);border-radius:var(--r-sm);padding:12px 14px;border:1.5px solid var(--border);margin-bottom:12px; }
+.m-share-link-row { display:flex;align-items:center;gap:8px;background:white;border:1.5px dashed var(--sage-light);border-radius:8px;padding:8px 12px;margin:10px 0; }
+.m-share-link-text { font-size:0.72rem;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.m-copy-btn { font-size:0.68rem;font-weight:700;color:var(--sage);cursor:pointer;padding:3px 8px;background:var(--sage-pale);border-radius:5px;white-space:nowrap; border:none; }
+
+/* Settings */
+.m-settings-row { display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border); }
+.m-settings-row:last-child { border-bottom:none; }
+.m-settings-icon { font-size:1rem;width:26px;text-align:center; }
+.m-settings-label { flex:1;font-size:0.82rem; }
+.m-toggle { width:34px;height:20px;background:var(--sage);border-radius:99px;position:relative;cursor:pointer;flex-shrink:0; }
+.m-toggle::after { content:'';position:absolute;top:3px;right:3px;width:14px;height:14px;background:white;border-radius:50%;transition:0.2s; }
+.m-toggle.off { background:var(--border); }
+.m-toggle.off::after { right:auto;left:3px; }
+.m-upgrade-banner { background:linear-gradient(135deg,var(--amber),#e8a060);border-radius:var(--r-sm);padding:14px;color:white;margin-bottom:14px; }
+.m-upgrade-title { font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:700;margin-bottom:4px; }
+.m-upgrade-sub { font-size:0.75rem;opacity:0.9;margin-bottom:10px; }
+.m-upgrade-btn { background:white;color:var(--amber);border:none;border-radius:8px;padding:8px 14px;font-size:0.78rem;font-weight:700;cursor:pointer;font-family:'Instrument Sans',sans-serif; }
+
+/* Onboarding */
+.m-onboard { text-align:center;padding:8px 4px; }
+.m-onboard-emoji { font-size:2.8rem;margin-bottom:10px; }
+.m-onboard-title { font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:6px; }
+.m-onboard-text { font-size:0.78rem;color:var(--muted);line-height:1.55; }
+.m-dots { display:flex;justify-content:center;gap:5px;margin:14px 0; }
+.m-dot { width:5px;height:5px;border-radius:50%;background:var(--border); }
+.m-dot.a { background:var(--ink);width:14px;border-radius:3px; }
+
+/* Form */
+.m-form-step { display:flex;gap:4px;margin-bottom:12px; }
+.m-form-step-bar { flex:1;height:3px;border-radius:2px;background:var(--border); }
+.m-form-step-bar.done { background:var(--sage); }
+.m-form-step-bar.cur { background:var(--amber); }
+.m-input-group { margin-bottom:8px; }
+.m-input-label { font-size:0.65rem;font-weight:700;color:var(--muted);margin-bottom:3px; }
+.m-input-field { width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:6px;padding:7px 10px;font-size:0.78rem;font-family:'Instrument Sans',sans-serif;color:var(--ink);outline:none; }
+.m-input-field:focus { border-color:var(--sage); }
+
+/* ─ Modal section label ─ */
+.m-section-label { font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:10px 0 7px; }
+
+/* ── MODAL NAV BOTTOM ── */
+.m-bottom-nav { display:flex;justify-content:space-around;padding:10px 0 2px;border-top:1.5px solid var(--border);margin-top:14px; }
+.m-nav-item { display:flex;flex-direction:column;align-items:center;gap:2px;font-size:0.58rem;color:var(--muted);cursor:pointer;padding:2px 8px;border-radius:6px;transition:all 0.15s; }
+.m-nav-item .m-nav-icon-big { font-size:1.1rem; }
+.m-nav-item.active { color:var(--sage); }
+
+/* ═══════════════════════════════════════════
+   JOURNEY MAP
+═══════════════════════════════════════════ */
+.journey-map {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 24px 28px;
+  max-width: 820px;
+  box-shadow: var(--shadow);
+}
+.journey-title { font-family:'Syne',sans-serif; font-size:1.1rem;font-weight:700;margin-bottom:18px; }
+.journey-steps { display:flex;gap:0;overflow-x:auto; }
+.journey-step { flex-shrink:0;width:130px;text-align:center; }
+.journey-step-circle {
+  width:44px;height:44px;border-radius:50%;
+  background:var(--sage-pale);border:2px solid var(--sage-light);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.2rem;margin:0 auto 8px;
+  transition:all 0.2s;
+}
+.journey-step.active .journey-step-circle { background:var(--sage);border-color:var(--sage);box-shadow:0 0 0 4px rgba(90,153,112,0.2); }
+.journey-step.visited .journey-step-circle { background:var(--sage-pale);border-color:var(--sage); }
+.journey-step-name { font-size:0.72rem;font-weight:600;color:var(--ink);margin-bottom:2px; }
+.journey-step-role { font-size:0.65rem;color:var(--muted); }
+.journey-connector { flex:1;height:2px;background:var(--border);margin-top:21px;min-width:20px; }
+.journey-connector.done { background:var(--sage-light); }
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════ */
+@media (max-width:768px) {
+  .sidebar { display:none; }
+  .main { margin-left:0; padding:20px 16px; }
+  .detail-grid { grid-template-columns:1fr; }
+}
+
+/* ═══════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════ */
+.toast {
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--ink);color:white;
+  padding:10px 22px;border-radius:99px;
+  font-size:0.8rem;font-weight:500;
+  z-index:1000;box-shadow:var(--shadow);
+  opacity:0;transition:opacity 0.25s;pointer-events:none;
+  white-space:nowrap;
+}
+.toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-logo">blo<span>op</span> 🐾</div>
+  <div class="topbar-right">
+    <div class="topbar-hint">Interactive Prototype · Click any screen to preview</div>
+    <div class="topbar-badge">Option 3</div>
+  </div>
+</div>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-label">User Flows</div>
+    <div class="sidebar-item active" id="nav-onboarding" onclick="showFlow('onboarding')">
+      <span class="si-icon">🚀</span> Onboarding
+      <span class="si-dot"></span>
+    </div>
+    <div class="sidebar-item" id="nav-dashboard" onclick="showFlow('dashboard')">
+      <span class="si-icon">🏠</span> Dashboard
+      <span class="si-dot"></span>
+    </div>
+    <div class="sidebar-item" id="nav-chat" onclick="showFlow('chat')">
+      <span class="si-icon">💬</span> AI Vet Chat
+      <span class="si-dot"></span>
+    </div>
+    <div class="sidebar-item" id="nav-docs" onclick="showFlow('docs')">
+      <span class="si-icon">📄</span> Documents
+      <span class="si-dot"></span>
+    </div>
+    <div class="sidebar-item" id="nav-share" onclick="showFlow('share')">
+      <span class="si-icon">🔗</span> Share Profile
+      <span class="si-dot"></span>
+    </div>
+    <div class="sidebar-item" id="nav-settings" onclick="showFlow('settings')">
+      <span class="si-icon">⚙️</span> Settings
+      <span class="si-dot"></span>
+    </div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-label">Progress</div>
+    <div class="flow-progress">
+      <div class="flow-progress-bar">
+        <div class="flow-progress-fill" id="progress-fill" style="width:17%"></div>
+      </div>
+      <div class="flow-progress-label" id="progress-label">1 of 6 flows visited</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="layout">
+<div class="main">
+
+  <!-- ═══════════ FLOW: ONBOARDING ═══════════ -->
+  <div class="view active" id="flow-onboarding">
+    <div class="flow-header">
+      <div class="flow-number">Flow 1 of 6</div>
+      <div class="flow-title">Onboarding & Setup</div>
+      <div class="flow-scenario">
+        <strong>📖 Maya's Story:</strong> Maya just adopted Mochi, a shiba inu. A friend texts "use Bloop!" — she downloads the app, swipes through 3 value screens, and sets up Mochi's profile in under 2 minutes.
+      </div>
+    </div>
+
+    <!-- FLOW CANVAS -->
+    <div class="flow-canvas">
+      <!-- Splash -->
+      <div class="screen-card active" id="sc-splash" onclick="openModal('modal-splash'); setActive('sc-splash')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-splash">
+              <div class="m-splash-dot"></div>
+              <div class="m-splash-bar"></div>
+              <div class="m-splash-bar sm"></div>
+            </div>
+          </div>
+        </div>
+        <div class="sc-label">1. Splash</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">tap</div></div>
+      </div>
+
+      <!-- Onboard 1 -->
+      <div class="screen-card" id="sc-onboard1" onclick="openModal('modal-onboard1'); setActive('sc-onboard1')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-dots"><div class="m-dot a"></div><div class="m-dot"></div><div class="m-dot"></div></div>
+            <div style="text-align:center;font-size:1.8rem;margin-bottom:6px;">🗂️</div>
+            <div class="m-card light"><div class="m-card-lines"><div class="m-card-line dark"></div><div class="m-card-line dark" style="width:60%"></div></div></div>
+          </div>
+        </div>
+        <div class="sc-label">2. Value Prop 1</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">swipe</div></div>
+      </div>
+
+      <!-- Onboard 2 -->
+      <div class="screen-card" id="sc-onboard2" onclick="openModal('modal-onboard2'); setActive('sc-onboard2')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-dots"><div class="m-dot"></div><div class="m-dot a"></div><div class="m-dot"></div></div>
+            <div style="text-align:center;font-size:1.8rem;margin-bottom:6px;">🤖</div>
+            <div class="m-card light"><div class="m-card-lines"><div class="m-card-line dark"></div><div class="m-card-line dark" style="width:70%"></div></div></div>
+          </div>
+        </div>
+        <div class="sc-label">3. Value Prop 2</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">swipe</div></div>
+      </div>
+
+      <!-- Add Pet -->
+      <div class="screen-card" id="sc-addpet" onclick="openModal('modal-addpet'); setActive('sc-addpet')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-form-step"><div class="m-form-step-bar done"></div><div class="m-form-step-bar cur"></div><div class="m-form-step-bar"></div></div>
+            <div class="m-input-group"><div class="m-input-label">Name</div><div class="m-input-field" style="pointer-events:none;font-size:0.72rem;padding:5px 8px;">Mochi</div></div>
+            <div class="m-input-group"><div class="m-input-label">Breed</div><div class="m-input-field" style="pointer-events:none;font-size:0.72rem;padding:5px 8px;">Shiba Inu</div></div>
+          </div>
+        </div>
+        <div class="sc-label">4. Create Profile</div>
+      </div>
+    </div>
+
+    <!-- DETAIL PANEL -->
+    <div class="detail-panel" id="detail-onboarding">
+      <div class="detail-header">
+        <div class="detail-icon">🚀</div>
+        <div class="detail-title-wrap">
+          <div class="detail-screen-name">Onboarding Flow</div>
+          <div class="detail-desc">Click any screen above to preview it as a full modal. This flow converts new downloads into active users.</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-box">
+          <div class="db-label">UX Goal</div>
+          <div class="db-content"><ul>
+            <li>Build intent before asking for data</li>
+            <li>3 value props → 1 setup form</li>
+            <li>Optional photo reduces friction</li>
+            <li>Profile creation unlocks AI</li>
+          </ul></div>
+        </div>
+        <div class="detail-box">
+          <div class="db-label">Business Rationale</div>
+          <div class="db-content"><ul>
+            <li>Owner-facing (not vet-facing)</li>
+            <li>Works at any clinic from day 1</li>
+            <li>4 fields = full AI personalization</li>
+            <li>Free tier — zero barrier to entry</li>
+          </ul></div>
+        </div>
+      </div>
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="openModal('modal-splash')">▶ Preview Splash Screen</button>
+        <button class="cta-btn secondary" onclick="showFlow('dashboard')">Next Flow: Dashboard →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ FLOW: DASHBOARD ═══════════ -->
+  <div class="view" id="flow-dashboard">
+    <div class="flow-header">
+      <div class="flow-number">Flow 2 of 6</div>
+      <div class="flow-title">Home Dashboard</div>
+      <div class="flow-scenario">
+        <strong>📖 Tuesday morning:</strong> Maya opens Bloop with her coffee. The dashboard instantly shows Mochi's flea treatment is overdue — she didn't need to search. Everything critical is surfaced automatically.
+      </div>
+    </div>
+
+    <div class="flow-canvas">
+      <div class="screen-card active" id="sc-dashboard" onclick="openModal('modal-dashboard'); setActive('sc-dashboard')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-header"><div class="m-title"></div><div class="m-avatar"></div></div>
+            <div class="m-card"><div class="m-card-dot"></div><div class="m-card-lines"><div class="m-card-line"></div><div class="m-card-line" style="width:60%"></div></div></div>
+            <div class="m-row"><div class="m-icon">💉</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:65%"></div></div><div class="m-pill orange"></div></div>
+            <div class="m-row"><div class="m-icon">🦟</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:55%"></div></div><div class="m-pill red"></div></div>
+            <div class="m-bottom"><div class="m-nav-icon active"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div></div>
+          </div>
+        </div>
+        <div class="sc-label">Dashboard</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">tap AI</div></div>
+      </div>
+
+      <div class="screen-card" id="sc-dash-chat" onclick="openModal('modal-chat'); setActive('sc-dash-chat')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-header"><div class="m-title"></div></div>
+            <div class="m-msg ai"></div>
+            <div class="m-msg user"></div>
+            <div class="m-msg ai" style="width:75%;height:24px;"></div>
+            <div class="m-bottom"><div class="m-nav-icon"></div><div class="m-nav-icon active"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div></div>
+          </div>
+        </div>
+        <div class="sc-label">→ AI Chat</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">tap Docs</div></div>
+      </div>
+
+      <div class="screen-card" id="sc-dash-docs" onclick="openModal('modal-docs'); setActive('sc-dash-docs')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-header"><div class="m-title"></div></div>
+            <div class="m-doc"><div class="m-doc-thumb">💉</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:60%"></div></div><div class="m-pill green" style="font-size:0;width:20px;height:8px;border-radius:4px;"></div></div>
+            <div class="m-doc"><div class="m-doc-thumb">💊</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:50%"></div></div><div class="m-pill orange" style="font-size:0;width:20px;height:8px;border-radius:4px;"></div></div>
+            <div class="m-doc"><div class="m-doc-thumb">🏥</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:70%"></div></div></div>
+            <div class="m-bottom"><div class="m-nav-icon"></div><div class="m-nav-icon"></div><div class="m-nav-icon active"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div></div>
+          </div>
+        </div>
+        <div class="sc-label">→ Documents</div>
+      </div>
+    </div>
+
+    <div class="detail-panel">
+      <div class="detail-header">
+        <div class="detail-icon">🏠</div>
+        <div class="detail-title-wrap">
+          <div class="detail-screen-name">Dashboard — Daily Driver</div>
+          <div class="detail-desc">The screen Maya opens every day. Designed to surface what matters without any digging.</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-box">
+          <div class="db-label">Key UX Decisions</div>
+          <div class="db-content"><ul>
+            <li>Pet card as emotional hero element</li>
+            <li>Reminders sorted by urgency (red first)</li>
+            <li>Quick actions = 1-tap to any feature</li>
+            <li>Status pill at a glance (no text scanning)</li>
+          </ul></div>
+        </div>
+        <div class="detail-box">
+          <div class="db-label">Transition Details</div>
+          <div class="db-content"><ul>
+            <li>Bottom nav → slide left/right</li>
+            <li>Reminder tap → modal detail</li>
+            <li>Quick action → fade-push to screen</li>
+            <li>Add Pet → sheet slides up</li>
+          </ul></div>
+        </div>
+      </div>
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="openModal('modal-dashboard')">▶ Preview Dashboard</button>
+        <button class="cta-btn secondary" onclick="showFlow('chat')">Next: AI Chat →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ FLOW: CHAT ═══════════ -->
+  <div class="view" id="flow-chat">
+    <div class="flow-header">
+      <div class="flow-number">Flow 3 of 6</div>
+      <div class="flow-title">AI Vet Assistant</div>
+      <div class="flow-scenario">
+        <strong>🚨 Emergency scenario:</strong> Mochi grabbed a grape off the counter. Maya opens "Ask Bloop." The AI already knows Mochi's weight and breed — it gives an immediate, personalized risk alert, not generic internet advice.
+      </div>
+    </div>
+
+    <div class="flow-canvas">
+      <div class="screen-card active" id="sc-chat-open" onclick="openModal('modal-chat'); setActive('sc-chat-open')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-header"><div class="m-title"></div></div>
+            <div class="m-alert" style="padding:5px 7px;gap:4px;margin-bottom:6px;"><div style="font-size:0.7rem;">⚠️</div><div style="height:18px;flex:1;background:var(--red-pale);border-radius:3px;"></div></div>
+            <div class="m-msg ai"></div>
+            <div class="m-msg user"></div>
+            <div class="m-msg ai" style="width:80%;height:28px;"></div>
+            <div class="m-input" style="margin-top:6px;"></div>
+          </div>
+        </div>
+        <div class="sc-label">AI Chat</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">5 queries / mo</div></div>
+      </div>
+
+      <div class="screen-card" id="sc-chat-limit" onclick="openModal('modal-upgrade'); setActive('sc-chat-limit')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-upgrade-banner" style="padding:8px;border-radius:8px;margin-bottom:6px;">
+              <div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;margin-bottom:4px;"></div>
+              <div style="height:4px;background:rgba(255,255,255,0.2);border-radius:2px;width:70%;"></div>
+            </div>
+            <div class="m-card light"><div class="m-card-lines"><div class="m-card-line dark"></div></div></div>
+          </div>
+        </div>
+        <div class="sc-label">Limit → Upgrade</div>
+      </div>
+    </div>
+
+    <div class="detail-panel">
+      <div class="detail-header">
+        <div class="detail-icon">🤖</div>
+        <div class="detail-title-wrap">
+          <div class="detail-screen-name">Ask Bloop — AI Engine</div>
+          <div class="detail-desc">The app's core differentiator. Uses the pet's stored profile as AI context for personalized answers.</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-box">
+          <div class="db-label">How It Works</div>
+          <div class="db-content"><ul>
+            <li>Pet profile injected as system prompt</li>
+            <li>AI "knows" breed, weight, conditions</li>
+            <li>No generic Google-style answers</li>
+            <li>5 free queries/month, unlimited on Plus</li>
+          </ul></div>
+        </div>
+        <div class="detail-box">
+          <div class="db-label">Monetization Hook</div>
+          <div class="db-content"><ul>
+            <li>Limit counter shown non-intrusively</li>
+            <li>Upgrade prompt only when limit hit</li>
+            <li>Emergency scenario drives urgency to upgrade</li>
+            <li>$4.99/mo for unlimited queries</li>
+          </ul></div>
+        </div>
+      </div>
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="openModal('modal-chat')">▶ Preview AI Chat</button>
+        <button class="cta-btn sage" onclick="openModal('modal-upgrade')">🔒 See Upgrade Modal</button>
+        <button class="cta-btn secondary" onclick="showFlow('docs')">Next: Documents →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ FLOW: DOCS ═══════════ -->
+  <div class="view" id="flow-docs">
+    <div class="flow-header">
+      <div class="flow-number">Flow 4 of 6</div>
+      <div class="flow-title">Document Vault</div>
+      <div class="flow-scenario">
+        <strong>📋 New vet appointment:</strong> Maya switched vets. Instead of calling the old clinic to fax records, she opens Documents, shows the new vet Mochi's full history right from her phone in seconds.
+      </div>
+    </div>
+
+    <div class="flow-canvas">
+      <div class="screen-card active" id="sc-docs-main" onclick="openModal('modal-docs'); setActive('sc-docs-main')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-header"><div class="m-title"></div></div>
+            <div class="m-doc"><div class="m-doc-thumb">💉</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:60%"></div></div><div class="m-pill" style="background:var(--sage-pale);height:8px;width:20px;border-radius:4px;"></div></div>
+            <div class="m-doc"><div class="m-doc-thumb">💊</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:50%"></div></div><div class="m-pill" style="background:var(--amber-pale);height:8px;width:20px;border-radius:4px;"></div></div>
+            <div class="m-doc"><div class="m-doc-thumb">🏥</div><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:70%"></div></div></div>
+            <div class="m-bottom"><div class="m-nav-icon"></div><div class="m-nav-icon"></div><div class="m-nav-icon active"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div></div>
+          </div>
+        </div>
+        <div class="sc-label">Documents List</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">tap doc</div></div>
+      </div>
+
+      <div class="screen-card" id="sc-docs-view" onclick="openModal('modal-doc-detail'); setActive('sc-docs-view')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div style="background:var(--bg);border-radius:8px;height:60px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin-bottom:6px;">📄</div>
+            <div class="m-card light" style="height:20px;"><div class="m-card-lines"><div class="m-card-line dark"></div></div></div>
+            <div class="m-row" style="margin-top:4px;"><div class="m-lines"><div class="m-line"></div><div class="m-line" style="width:50%"></div></div></div>
+          </div>
+        </div>
+        <div class="sc-label">Document Detail</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">8/10 slots</div></div>
+      </div>
+
+      <div class="screen-card" id="sc-docs-upgrade" onclick="openModal('modal-upgrade'); setActive('sc-docs-upgrade')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-upgrade-banner" style="padding:8px;border-radius:8px;">
+              <div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;margin-bottom:4px;"></div>
+              <div style="height:4px;background:rgba(255,255,255,0.2);border-radius:2px;width:70%;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="sc-label">Upgrade Prompt</div>
+      </div>
+    </div>
+
+    <div class="detail-panel">
+      <div class="detail-header">
+        <div class="detail-icon">📁</div>
+        <div class="detail-title-wrap">
+          <div class="detail-screen-name">Document Vault</div>
+          <div class="detail-desc">The digital filing cabinet that replaces paper folders. Organized by category with live status indicators.</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-box">
+          <div class="db-label">Design Choices</div>
+          <div class="db-content"><ul>
+            <li>Categorized: Vaccines / Rx / Visits</li>
+            <li>Status pills visible without opening</li>
+            <li>Slot counter creates freemium urgency</li>
+            <li>Upgrade CTA is contextual, not a pop-up</li>
+          </ul></div>
+        </div>
+        <div class="detail-box">
+          <div class="db-label">Free vs Plus</div>
+          <div class="db-content"><ul>
+            <li>Free: 10 docs per pet, 3 pets</li>
+            <li>Plus: Unlimited storage</li>
+            <li>Counter nudges, never blocks</li>
+            <li>Power users hit limit naturally</li>
+          </ul></div>
+        </div>
+      </div>
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="openModal('modal-docs')">▶ Preview Documents</button>
+        <button class="cta-btn secondary" onclick="showFlow('share')">Next: Share Profile →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ FLOW: SHARE ═══════════ -->
+  <div class="view" id="flow-share">
+    <div class="flow-header">
+      <div class="flow-number">Flow 5 of 6</div>
+      <div class="flow-title">Share Pet Profile</div>
+      <div class="flow-scenario">
+        <strong>🧳 Weekend trip:</strong> Maya is flying out Friday. She generates a link for pet sitter Jake. He gets Mochi's feeding schedule, allergy warnings, and emergency contacts — without needing to download the app.
+      </div>
+    </div>
+
+    <div class="flow-canvas">
+      <div class="screen-card active" id="sc-share-main" onclick="openModal('modal-share'); setActive('sc-share-main')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-header"><div class="m-title"></div></div>
+            <div class="m-card light" style="margin-bottom:4px;height:40px;"><div class="m-card-lines"><div class="m-card-line dark"></div><div class="m-card-line dark" style="width:60%"></div></div></div>
+            <div style="background:var(--bg);border:1px dashed var(--sage-light);border-radius:6px;height:16px;margin:4px 0;"></div>
+            <div class="m-row"><div class="m-icon">🍽</div><div class="m-lines"><div class="m-line"></div></div></div>
+            <div class="m-row"><div class="m-icon">🚫</div><div class="m-lines"><div class="m-line"></div></div></div>
+            <div class="m-bottom"><div class="m-nav-icon"></div><div class="m-nav-icon"></div><div class="m-nav-icon"></div><div class="m-nav-icon active"></div><div class="m-nav-icon"></div></div>
+          </div>
+        </div>
+        <div class="sc-label">Share Screen</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">copy link</div></div>
+      </div>
+
+      <div class="screen-card" id="sc-sitter-view" onclick="openModal('modal-sitter-view'); setActive('sc-sitter-view')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar" style="background:#2a4030;"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body" style="background:#f5fbf7;">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+              <div style="font-size:1.4rem;">🐕</div>
+              <div><div class="m-line" style="width:40px;margin-bottom:3px;"></div><div class="m-line" style="width:28px;background:var(--sage-light);"></div></div>
+            </div>
+            <div class="m-row"><div class="m-icon">🍽</div><div class="m-lines"><div class="m-line"></div></div></div>
+            <div class="m-row"><div class="m-icon">🚫</div><div class="m-lines"><div class="m-line"></div></div></div>
+            <div class="m-row"><div class="m-icon">📞</div><div class="m-lines"><div class="m-line"></div></div></div>
+          </div>
+        </div>
+        <div class="sc-label">Jake's Sitter View</div>
+      </div>
+    </div>
+
+    <div class="detail-panel">
+      <div class="detail-header">
+        <div class="detail-icon">🔗</div>
+        <div class="detail-title-wrap">
+          <div class="detail-screen-name">Shareable Pet Sitter Link</div>
+          <div class="detail-desc">A read-only, time-limited view for people without the app. Privacy-respecting and the source of Bloop's viral growth.</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-box">
+          <div class="db-label">Privacy Design</div>
+          <div class="db-content"><ul>
+            <li>Sitter sees: food, allergies, contacts</li>
+            <li>Sitter cannot see: full medical records</li>
+            <li>Link auto-expires in 72 hours</li>
+            <li>Owner can revoke anytime</li>
+          </ul></div>
+        </div>
+        <div class="detail-box">
+          <div class="db-label">Viral Growth Loop</div>
+          <div class="db-content"><ul>
+            <li>Jake gets link → sees Bloop branding</li>
+            <li>"Powered by Bloop" CTA on sitter view</li>
+            <li>Jake → recommends to his other clients</li>
+            <li>No paid ads needed for acquisition</li>
+          </ul></div>
+        </div>
+      </div>
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="openModal('modal-share')">▶ Preview Share Screen</button>
+        <button class="cta-btn sage" onclick="openModal('modal-sitter-view')">👀 See Jake's View</button>
+        <button class="cta-btn secondary" onclick="showFlow('settings')">Next: Settings →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ FLOW: SETTINGS ═══════════ -->
+  <div class="view" id="flow-settings">
+    <div class="flow-header">
+      <div class="flow-number">Flow 6 of 6</div>
+      <div class="flow-title">Settings & Upgrade</div>
+      <div class="flow-scenario">
+        <strong>💳 Upgrading:</strong> Maya adopts a second cat. She hits the 5-query AI limit and 8/10 doc slots. She opens settings, sees the Bloop Plus banner, and upgrades for $4.99/mo — the natural end of the free-to-paid journey.
+      </div>
+    </div>
+
+    <div class="flow-canvas">
+      <div class="screen-card active" id="sc-settings-main" onclick="openModal('modal-settings'); setActive('sc-settings-main')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-upgrade-banner" style="padding:8px;border-radius:8px;margin-bottom:6px;">
+              <div style="height:5px;background:rgba(255,255,255,0.3);border-radius:2px;margin-bottom:3px;"></div>
+              <div style="height:3px;background:rgba(255,255,255,0.2);border-radius:2px;width:60%;"></div>
+            </div>
+            <div class="m-settings-row" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:0.7rem;">🔔 Vaccine Reminders</span><div class="m-toggle" style="width:22px;height:12px;"></div></div>
+            <div class="m-settings-row" style="padding:5px 0;border-bottom:1px solid var(--border);"><span style="font-size:0.7rem;">🦟 Flea &amp; Tick</span><div class="m-toggle" style="width:22px;height:12px;"></div></div>
+            <div class="m-settings-row" style="padding:5px 0;"><span style="font-size:0.7rem;">👤 Profile</span><span style="margin-left:auto;font-size:0.65rem;color:var(--muted);">›</span></div>
+          </div>
+        </div>
+        <div class="sc-label">Settings</div>
+      </div>
+
+      <div class="flow-arrow-wrap">
+        <div><div class="flow-arrow-line"><div class="line"></div><div class="arrowhead"></div></div>
+        <div class="flow-arrow-label">tap upgrade</div></div>
+      </div>
+
+      <div class="screen-card" id="sc-upgrade" onclick="openModal('modal-upgrade'); setActive('sc-upgrade')">
+        <div class="sc-badge">Viewing</div>
+        <div class="sc-frame">
+          <div class="sc-topbar"><div class="sc-topbar-pill"></div></div>
+          <div class="sc-body">
+            <div class="m-upgrade-banner" style="padding:10px;border-radius:8px;">
+              <div style="height:7px;background:rgba(255,255,255,0.4);border-radius:3px;width:70%;margin-bottom:4px;"></div>
+              <div style="height:5px;background:rgba(255,255,255,0.25);border-radius:2px;width:50%;margin-bottom:8px;"></div>
+              <div style="height:18px;background:rgba(255,255,255,0.9);border-radius:5px;width:80%;"></div>
+            </div>
+            <div class="m-card light" style="height:16px;"><div class="m-card-lines"><div class="m-card-line dark"></div></div></div>
+            <div class="m-card light" style="height:16px;"><div class="m-card-lines"><div class="m-card-line dark"></div></div></div>
+          </div>
+        </div>
+        <div class="sc-label">Upgrade Modal</div>
+      </div>
+    </div>
+
+    <div class="detail-panel">
+      <div class="detail-header">
+        <div class="detail-icon">⚙️</div>
+        <div class="detail-title-wrap">
+          <div class="detail-screen-name">Settings & Monetization</div>
+          <div class="detail-desc">The end of the free-to-paid funnel. Upgrade is prominent but never an interrupt — it earns its place.</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-box">
+          <div class="db-label">Revenue Model</div>
+          <div class="db-content"><ul>
+            <li>$4.99/mo — Bloop Plus</li>
+            <li>Unlimited docs + unlimited AI</li>
+            <li>Future: pet insurance affiliate revenue</li>
+            <li>Prescription food recommendations</li>
+          </ul></div>
+        </div>
+        <div class="detail-box">
+          <div class="db-label">Notification Controls</div>
+          <div class="db-content"><ul>
+            <li>Toggle: Vaccine reminders</li>
+            <li>Toggle: Flea & tick prevention</li>
+            <li>Toggle: Appointment reminders</li>
+            <li>All on by default — opt-out model</li>
+          </ul></div>
+        </div>
+      </div>
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="openModal('modal-settings')">▶ Preview Settings</button>
+        <button class="cta-btn sage" onclick="openModal('modal-upgrade')">💳 See Upgrade Flow</button>
+        <button class="cta-btn secondary" onclick="showFlow('onboarding')">↩ Back to Start</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /layout -->
+
+<!-- ═══════════════════════════════════════════
+     MODALS
+═══════════════════════════════════════════ -->
+
+<!-- SPLASH -->
+<div class="modal-overlay" id="modal-splash" onclick="closeOnBg(event,'modal-splash')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;">
+      <span class="modal-topbar-time">9:41</span>
+      <div class="modal-topbar-pill"></div>
+      <button class="modal-close" onclick="closeModal('modal-splash')">✕</button>
+    </div>
+    <div class="modal-body" style="background:linear-gradient(170deg,#16211a 0%,#2a4030 100%);min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 28px;">
+      <div style="font-size:3.5rem;margin-bottom:12px;animation:float2 3s ease-in-out infinite;">🐾</div>
+      <div style="font-family:'Syne',sans-serif;font-size:2.8rem;font-weight:800;color:white;line-height:1;">blo<span style="color:var(--sage-light);">op</span></div>
+      <div style="font-size:0.88rem;color:rgba(255,255,255,0.55);margin:8px 0 36px;">Your pet's health, all in one place</div>
+      <button class="cta-btn sage" style="width:100%;justify-content:center;padding:14px;font-size:0.95rem;" onclick="closeModal('modal-splash');openModal('modal-onboard1')">Get Started →</button>
+      <button style="width:100%;margin-top:10px;background:transparent;border:1.5px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.5);border-radius:10px;padding:11px;font-family:'Instrument Sans',sans-serif;font-size:0.88rem;cursor:pointer;">Sign In</button>
+    </div>
+  </div>
+</div>
+<style>@keyframes float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}</style>
+
+<!-- ONBOARD 1 -->
+<div class="modal-overlay" id="modal-onboard1" onclick="closeOnBg(event,'modal-onboard1')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-onboard1')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-dots"><div class="m-dot a"></div><div class="m-dot"></div><div class="m-dot"></div></div>
+      <div class="m-onboard">
+        <div class="m-onboard-emoji">🗂️</div>
+        <div class="m-onboard-title">One Home for Every Record</div>
+        <div class="m-onboard-text">Upload vet bills, vaccine cards, and prescriptions. No more hunting through email or paper folders.</div>
+      </div>
+      <button class="cta-btn primary" style="width:100%;justify-content:center;margin-top:28px;" onclick="closeModal('modal-onboard1');openModal('modal-onboard2')">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ONBOARD 2 -->
+<div class="modal-overlay" id="modal-onboard2" onclick="closeOnBg(event,'modal-onboard2')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-onboard2')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-dots"><div class="m-dot"></div><div class="m-dot a"></div><div class="m-dot"></div></div>
+      <div class="m-onboard">
+        <div class="m-onboard-emoji">🤖</div>
+        <div class="m-onboard-title">AI That Knows Your Pet</div>
+        <div class="m-onboard-text">Ask Bloop anything — it reads your pet's profile to give personalized, actionable answers in seconds. Not generic internet advice.</div>
+      </div>
+      <button class="cta-btn primary" style="width:100%;justify-content:center;margin-top:28px;" onclick="closeModal('modal-onboard2');openModal('modal-addpet')">Create My Profile →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD PET -->
+<div class="modal-overlay" id="modal-addpet" onclick="closeOnBg(event,'modal-addpet')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-addpet')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-screen-header"><div class="m-screen-title">Add Your Pet</div><div class="m-screen-sub">Let's set up their profile</div></div>
+      <div class="m-form-step"><div class="m-form-step-bar done"></div><div class="m-form-step-bar cur"></div><div class="m-form-step-bar"></div></div>
+      <div style="text-align:center;margin-bottom:14px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:var(--bg);border:2px dashed var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;cursor:pointer;">🐶</div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:4px;">Tap to add photo</div>
+      </div>
+      <div class="m-input-group"><div class="m-input-label">Pet's Name</div><input class="m-input-field" value="Mochi" /></div>
+      <div class="m-input-group"><div class="m-input-label">Breed</div><input class="m-input-field" value="Shiba Inu" /></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="m-input-group"><div class="m-input-label">Age</div><input class="m-input-field" value="2 yrs" /></div>
+        <div class="m-input-group"><div class="m-input-label">Weight</div><input class="m-input-field" value="20 lbs" /></div>
+      </div>
+      <button class="cta-btn sage" style="width:100%;justify-content:center;margin-top:12px;" onclick="closeModal('modal-addpet');openModal('modal-dashboard');showToast('✅ Mochi\'s profile created!')">Save & Open Dashboard →</button>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="modal-overlay" id="modal-dashboard" onclick="closeOnBg(event,'modal-dashboard')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-dashboard')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-screen-header">
+        <div class="m-screen-title">Good morning ☀️</div>
+        <div class="m-screen-sub">Here's Mochi's overview</div>
+      </div>
+      <div class="m-pet-card">
+        <div class="m-pet-top">
+          <div class="m-pet-avatar">🐕</div>
+          <div>
+            <div class="m-pet-name">Mochi</div>
+            <div class="m-pet-breed">Shiba Inu · 2 yrs · ♂</div>
+            <div style="margin-top:5px;"><span class="m-pill green">✓ Vaccines up to date</span></div>
+          </div>
+        </div>
+        <div class="m-pet-stats">
+          <div class="m-pet-stat"><div class="v">20 lbs</div><div class="l">Weight</div></div>
+          <div class="m-pet-stat"><div class="v">8</div><div class="l">Documents</div></div>
+          <div class="m-pet-stat"><div class="v">3</div><div class="l">Reminders</div></div>
+        </div>
+      </div>
+      <div class="m-section-label">Upcoming Reminders</div>
+      <div class="m-reminder">
+        <div class="m-reminder-icon">💉</div>
+        <div style="flex:1"><div class="m-reminder-title">Rabies Booster</div><div class="m-reminder-date">Due in 12 days · Dr. Patel</div></div>
+        <span class="m-pill orange">Soon</span>
+      </div>
+      <div class="m-reminder">
+        <div class="m-reminder-icon">🦟</div>
+        <div style="flex:1"><div class="m-reminder-title">Flea & Tick Prevention</div><div class="m-reminder-date">Due in 3 days</div></div>
+        <span class="m-pill red">Urgent</span>
+      </div>
+      <div class="m-reminder">
+        <div class="m-reminder-icon">🏥</div>
+        <div style="flex:1"><div class="m-reminder-title">Annual Checkup</div><div class="m-reminder-date">In 6 weeks</div></div>
+        <span class="m-pill">Upcoming</span>
+      </div>
+      <div class="m-bottom-nav">
+        <div class="m-nav-item active"><div class="m-nav-icon-big">🏠</div>Home</div>
+        <div class="m-nav-item" onclick="closeModal('modal-dashboard');openModal('modal-chat')"><div class="m-nav-icon-big">💬</div>Ask AI</div>
+        <div class="m-nav-item" onclick="closeModal('modal-dashboard');openModal('modal-docs')"><div class="m-nav-icon-big">📄</div>Docs</div>
+        <div class="m-nav-item" onclick="closeModal('modal-dashboard');openModal('modal-share')"><div class="m-nav-icon-big">🔗</div>Share</div>
+        <div class="m-nav-item" onclick="closeModal('modal-dashboard');openModal('modal-settings')"><div class="m-nav-icon-big">⚙️</div>More</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHAT -->
+<div class="modal-overlay" id="modal-chat" onclick="closeOnBg(event,'modal-chat')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-chat')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-screen-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><div class="m-screen-title">Ask Bloop 🤖</div><div class="m-screen-sub">AI powered by Mochi's records</div></div>
+        <span class="m-pill orange">5 / 5 free left</span>
+      </div>
+      <div class="m-alert">
+        <div class="m-alert-icon">⚠️</div>
+        <div class="m-alert-text"><strong>Active concern:</strong> Mochi may have ingested a grape (~1 small). Weight: 20 lbs. ~10 min ago.</div>
+      </div>
+      <div class="m-chat-msg ai"><div class="m-chat-name">Bloop AI</div>Hi Maya! I have Mochi's full profile loaded. What's going on?</div>
+      <div class="m-chat-msg user">Mochi just ate a grape. Is that bad? He's 20 lbs.</div>
+      <div class="m-chat-msg ai"><div class="m-chat-name">Bloop AI</div>🚨 <strong>Act now.</strong> Grapes are toxic to dogs regardless of size — even one can cause acute kidney failure. At 20 lbs, Mochi is at significant risk.<br><br>➡ Call your vet or emergency animal hospital <strong>immediately.</strong><br>➡ ASPCA Poison Control: (888) 426-4435<br><br>Do NOT wait for symptoms.</div>
+      <div class="m-chat-msg user">Should I make him vomit?</div>
+      <div class="m-chat-msg ai"><div class="m-chat-name">Bloop AI</div>Only under vet guidance. Call first — they'll advise based on Mochi's exact weight.</div>
+      <div class="m-chat-input-row">
+        <input class="m-chat-input" placeholder="Ask about Mochi's health..." />
+        <button class="m-chat-send" onclick="showToast('⚡ Sending message...')">➤</button>
+      </div>
+      <div class="m-bottom-nav">
+        <div class="m-nav-item" onclick="closeModal('modal-chat');openModal('modal-dashboard')"><div class="m-nav-icon-big">🏠</div>Home</div>
+        <div class="m-nav-item active"><div class="m-nav-icon-big">💬</div>Ask AI</div>
+        <div class="m-nav-item" onclick="closeModal('modal-chat');openModal('modal-docs')"><div class="m-nav-icon-big">📄</div>Docs</div>
+        <div class="m-nav-item" onclick="closeModal('modal-chat');openModal('modal-share')"><div class="m-nav-icon-big">🔗</div>Share</div>
+        <div class="m-nav-item" onclick="closeModal('modal-chat');openModal('modal-settings')"><div class="m-nav-icon-big">⚙️</div>More</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DOCS -->
+<div class="modal-overlay" id="modal-docs" onclick="closeOnBg(event,'modal-docs')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-docs')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-screen-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><div class="m-screen-title">Documents 📄</div><div class="m-screen-sub">Mochi · 8 of 10 slots used</div></div>
+        <button class="cta-btn sage" style="padding:7px 14px;font-size:0.75rem;" onclick="showToast('📤 Upload document...')">+ Upload</button>
+      </div>
+      <div class="m-section-label">Vaccines</div>
+      <div class="m-doc-item" onclick="closeModal('modal-docs');openModal('modal-doc-detail')">
+        <div class="m-doc-thumb">💉</div>
+        <div><div class="m-doc-name">Rabies Vaccination</div><div class="m-doc-meta">Dr. Patel · Mar 2024 · PDF</div></div>
+        <span class="m-pill green">Valid</span>
+      </div>
+      <div class="m-doc-item">
+        <div class="m-doc-thumb">🩹</div>
+        <div><div class="m-doc-name">DHPP Combo Vaccine</div><div class="m-doc-meta">City Animal Clinic · Jan 2024</div></div>
+        <span class="m-pill green">Valid</span>
+      </div>
+      <div class="m-section-label">Prescriptions</div>
+      <div class="m-doc-item">
+        <div class="m-doc-thumb">💊</div>
+        <div><div class="m-doc-name">Apoquel (Allergy Rx)</div><div class="m-doc-meta">Rx #2847 · Refill available</div></div>
+        <span class="m-pill orange">Refill Soon</span>
+      </div>
+      <div class="m-section-label">Vet Visits</div>
+      <div class="m-doc-item">
+        <div class="m-doc-thumb">🏥</div>
+        <div><div class="m-doc-name">Annual Checkup Notes</div><div class="m-doc-meta">Dr. Patel · Feb 2024 · PDF</div></div>
+        <span class="m-pill">Saved</span>
+      </div>
+      <div style="background:var(--bg);border-radius:var(--r-xs);padding:10px 12px;text-align:center;margin-top:6px;border:1.5px solid var(--border);">
+        <div style="font-size:0.75rem;color:var(--muted);">🔒 2 slots remaining on free tier</div>
+        <button class="cta-btn primary" style="margin-top:8px;font-size:0.78rem;padding:8px 16px;" onclick="closeModal('modal-docs');openModal('modal-upgrade')">Upgrade for Unlimited →</button>
+      </div>
+      <div class="m-bottom-nav">
+        <div class="m-nav-item" onclick="closeModal('modal-docs');openModal('modal-dashboard')"><div class="m-nav-icon-big">🏠</div>Home</div>
+        <div class="m-nav-item" onclick="closeModal('modal-docs');openModal('modal-chat')"><div class="m-nav-icon-big">💬</div>Ask AI</div>
+        <div class="m-nav-item active"><div class="m-nav-icon-big">📄</div>Docs</div>
+        <div class="m-nav-item" onclick="closeModal('modal-docs');openModal('modal-share')"><div class="m-nav-icon-big">🔗</div>Share</div>
+        <div class="m-nav-item" onclick="closeModal('modal-docs');openModal('modal-settings')"><div class="m-nav-icon-big">⚙️</div>More</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DOC DETAIL -->
+<div class="modal-overlay" id="modal-doc-detail" onclick="closeOnBg(event,'modal-doc-detail')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-doc-detail')">✕</button></div>
+    <div class="modal-body">
+      <div style="background:var(--bg);border-radius:var(--r-sm);height:120px;display:flex;align-items:center;justify-content:center;font-size:4rem;margin-bottom:16px;border:1.5px solid var(--border);">📄</div>
+      <div class="m-screen-title" style="margin-bottom:4px;">Rabies Vaccination Certificate</div>
+      <div class="m-screen-sub" style="margin-bottom:14px;">Dr. Patel · City Animal Clinic · March 15, 2024</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div style="background:var(--bg);border-radius:var(--r-xs);padding:10px 12px;"><div style="font-size:0.65rem;color:var(--muted);margin-bottom:3px;">STATUS</div><span class="m-pill green">✓ Valid</span></div>
+        <div style="background:var(--bg);border-radius:var(--r-xs);padding:10px 12px;"><div style="font-size:0.65rem;color:var(--muted);margin-bottom:3px;">EXPIRES</div><div style="font-size:0.82rem;font-weight:600;">Mar 2025</div></div>
+        <div style="background:var(--bg);border-radius:var(--r-xs);padding:10px 12px;"><div style="font-size:0.65rem;color:var(--muted);margin-bottom:3px;">VET</div><div style="font-size:0.82rem;font-weight:600;">Dr. Patel</div></div>
+        <div style="background:var(--bg);border-radius:var(--r-xs);padding:10px 12px;"><div style="font-size:0.65rem;color:var(--muted);margin-bottom:3px;">FORMAT</div><div style="font-size:0.82rem;font-weight:600;">PDF · 0.4 MB</div></div>
+      </div>
+      <div class="cta-row">
+        <button class="cta-btn primary" style="flex:1;justify-content:center;" onclick="showToast('📥 Downloading...')">Download PDF</button>
+        <button class="cta-btn secondary" style="flex:1;justify-content:center;" onclick="showToast('🗑 Deleted')">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SHARE -->
+<div class="modal-overlay" id="modal-share" onclick="closeOnBg(event,'modal-share')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-share')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-screen-header"><div class="m-screen-title">Share Profile 🔗</div><div class="m-screen-sub">Give your sitter access to Mochi's info</div></div>
+      <div style="background:var(--bg);border-radius:var(--r-sm);padding:14px 16px;border:1.5px solid var(--border);margin-bottom:14px;">
+        <div style="font-size:0.72rem;font-weight:700;margin-bottom:6px;">🐕 Mochi's Pet Sitter View</div>
+        <div style="font-size:0.78rem;color:var(--muted);line-height:1.55;margin-bottom:8px;">Your sitter sees: feeding schedule, allergies, emergency contacts, and vaccine status. <strong style="color:var(--ink);">No medical records or AI access.</strong></div>
+        <div class="m-share-link-row">
+          <span class="m-share-link-text">bloop.app/share/mochi-abc123</span>
+          <button class="m-copy-btn" onclick="this.textContent='Copied! ✓';setTimeout(()=>this.textContent='Copy',2000);showToast('📋 Link copied!')">Copy</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button class="cta-btn primary" style="font-size:0.78rem;padding:9px;justify-content:center;" onclick="showToast('🔄 New link generated!')">New Link</button>
+          <button class="cta-btn secondary" style="font-size:0.78rem;padding:9px;justify-content:center;" onclick="showToast('📱 Opening Messages...')">📱 SMS</button>
+        </div>
+      </div>
+      <div class="m-section-label">Preview — What Jake Sees</div>
+      <div style="background:#f2fbf5;border:1.5px solid var(--sage-light);border-radius:var(--r-sm);padding:14px 16px;cursor:pointer;" onclick="closeModal('modal-share');openModal('modal-sitter-view')">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+          <div style="font-size:2rem;">🐕</div>
+          <div><div style="font-weight:700;font-size:0.92rem;">Mochi</div><div style="font-size:0.7rem;color:var(--muted);">Shiba Inu · 2 yrs</div></div>
+        </div>
+        <div style="font-size:0.78rem;line-height:1.7;">🍽 <strong>Feeding:</strong> 1 cup kibble, 2× daily<br>🚫 <strong>Allergies:</strong> Chicken, Grapes (toxic!)<br>📞 <strong>Vet:</strong> Dr. Patel (555-0192)<br>🆘 <strong>Emergency:</strong> Maya (555-0147)</div>
+        <div style="font-size:0.68rem;color:var(--sage);margin-top:8px;font-weight:600;">Tap to see full sitter view →</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:10px 12px;background:var(--bg);border-radius:var(--r-xs);">
+        <div><div style="font-size:0.82rem;font-weight:600;">Link expires in</div><div style="font-size:0.72rem;color:var(--muted);">72 hours from generation</div></div>
+        <span class="m-pill green">Active</span>
+      </div>
+      <div class="m-bottom-nav">
+        <div class="m-nav-item" onclick="closeModal('modal-share');openModal('modal-dashboard')"><div class="m-nav-icon-big">🏠</div>Home</div>
+        <div class="m-nav-item" onclick="closeModal('modal-share');openModal('modal-chat')"><div class="m-nav-icon-big">💬</div>Ask AI</div>
+        <div class="m-nav-item" onclick="closeModal('modal-share');openModal('modal-docs')"><div class="m-nav-icon-big">📄</div>Docs</div>
+        <div class="m-nav-item active"><div class="m-nav-icon-big">🔗</div>Share</div>
+        <div class="m-nav-item" onclick="closeModal('modal-share');openModal('modal-settings')"><div class="m-nav-icon-big">⚙️</div>More</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SITTER VIEW -->
+<div class="modal-overlay" id="modal-sitter-view" onclick="closeOnBg(event,'modal-sitter-view')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="background:#2a4030;position:relative;"><span class="modal-topbar-time" style="color:rgba(255,255,255,0.5);">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-sitter-view')">✕</button></div>
+    <div class="modal-body" style="background:#f2fbf5;">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:3rem;">🐕</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:700;">Mochi</div>
+        <div style="font-size:0.78rem;color:var(--muted);">Shiba Inu · 2 years old</div>
+        <span class="m-pill green" style="margin-top:6px;">✓ Vaccines up to date</span>
+      </div>
+      <div style="background:white;border-radius:var(--r-sm);padding:14px 16px;margin-bottom:10px;border:1px solid #c8e6d1;">
+        <div style="font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Feeding Schedule</div>
+        <div style="font-size:0.85rem;line-height:1.65;">🍽 <strong>Morning:</strong> 1 cup dry kibble at 7:30am<br>🍽 <strong>Evening:</strong> 1 cup dry kibble at 5:30pm<br>💧 Fresh water refilled twice daily</div>
+      </div>
+      <div style="background:var(--red-pale);border-radius:var(--r-sm);padding:14px 16px;margin-bottom:10px;border:1px solid #f5c6c2;">
+        <div style="font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--red);margin-bottom:8px;">⚠️ Allergies & Toxins</div>
+        <div style="font-size:0.85rem;line-height:1.65;color:var(--red);">🚫 <strong>Chicken</strong> — causes skin reactions<br>🚫 <strong>Grapes / Raisins</strong> — highly toxic<br>🚫 <strong>Xylitol</strong> — in some peanut butters</div>
+      </div>
+      <div style="background:white;border-radius:var(--r-sm);padding:14px 16px;margin-bottom:14px;border:1px solid #c8e6d1;">
+        <div style="font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Emergency Contacts</div>
+        <div style="font-size:0.85rem;line-height:1.75;">📞 <strong>Maya (Owner):</strong> (555) 014-7000<br>🏥 <strong>Dr. Patel's Clinic:</strong> (555) 019-2000<br>🆘 <strong>Pet Poison Helpline:</strong> (888) 426-4435</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:rgba(90,153,112,0.08);border-radius:var(--r-xs);font-size:0.72rem;color:var(--sage);">
+        Powered by <strong>Bloop</strong> · <span style="text-decoration:underline;cursor:pointer;" onclick="showToast('🐾 Opening Bloop App Store page...')">Get the app free →</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="modal-overlay" id="modal-settings" onclick="closeOnBg(event,'modal-settings')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="position:relative;"><span class="modal-topbar-time">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-settings')">✕</button></div>
+    <div class="modal-body">
+      <div class="m-screen-header"><div class="m-screen-title">Settings ⚙️</div><div class="m-screen-sub">Account & Preferences</div></div>
+      <div class="m-upgrade-banner" onclick="closeModal('modal-settings');openModal('modal-upgrade')">
+        <div class="m-upgrade-title">🐾 Bloop Plus</div>
+        <div class="m-upgrade-sub">Unlimited docs · Unlimited AI · Priority support</div>
+        <button class="m-upgrade-btn">Upgrade — $4.99 / month</button>
+      </div>
+      <div class="m-section-label">Notifications</div>
+      <div style="background:var(--bg);border-radius:var(--r-sm);padding:4px 14px;margin-bottom:12px;">
+        <div class="m-settings-row"><span class="m-settings-icon">💉</span><span class="m-settings-label">Vaccine Reminders</span><div class="m-toggle"></div></div>
+        <div class="m-settings-row"><span class="m-settings-icon">🦟</span><span class="m-settings-label">Flea & Tick Alerts</span><div class="m-toggle"></div></div>
+        <div class="m-settings-row"><span class="m-settings-icon">🏥</span><span class="m-settings-label">Appointment Reminders</span><div class="m-toggle off"></div></div>
+      </div>
+      <div class="m-section-label">Account</div>
+      <div style="background:var(--bg);border-radius:var(--r-sm);padding:4px 14px;">
+        <div class="m-settings-row" style="cursor:pointer;"><span class="m-settings-icon">👤</span><span class="m-settings-label">Maya Johnson</span><span style="color:var(--muted);font-size:0.8rem;">›</span></div>
+        <div class="m-settings-row" style="cursor:pointer;"><span class="m-settings-icon">🔒</span><span class="m-settings-label">Privacy & Data</span><span style="color:var(--muted);font-size:0.8rem;">›</span></div>
+        <div class="m-settings-row" style="cursor:pointer;"><span class="m-settings-icon">💳</span><span class="m-settings-label">Billing</span><span style="color:var(--muted);font-size:0.8rem;">›</span></div>
+        <div class="m-settings-row" style="cursor:pointer;color:var(--red);"><span class="m-settings-icon">🚪</span><span class="m-settings-label" style="color:var(--red);">Sign Out</span><span style="color:var(--red);font-size:0.8rem;">›</span></div>
+      </div>
+      <div class="m-bottom-nav">
+        <div class="m-nav-item" onclick="closeModal('modal-settings');openModal('modal-dashboard')"><div class="m-nav-icon-big">🏠</div>Home</div>
+        <div class="m-nav-item" onclick="closeModal('modal-settings');openModal('modal-chat')"><div class="m-nav-icon-big">💬</div>Ask AI</div>
+        <div class="m-nav-item" onclick="closeModal('modal-settings');openModal('modal-docs')"><div class="m-nav-icon-big">📄</div>Docs</div>
+        <div class="m-nav-item" onclick="closeModal('modal-settings');openModal('modal-share')"><div class="m-nav-icon-big">🔗</div>Share</div>
+        <div class="m-nav-item active"><div class="m-nav-icon-big">⚙️</div>More</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- UPGRADE MODAL -->
+<div class="modal-overlay" id="modal-upgrade" onclick="closeOnBg(event,'modal-upgrade')">
+  <div class="modal-box">
+    <div class="modal-topbar" style="background:#2a1a0e;position:relative;"><span class="modal-topbar-time" style="color:rgba(255,255,255,0.5);">9:41</span><div class="modal-topbar-pill"></div><button class="modal-close" onclick="closeModal('modal-upgrade')">✕</button></div>
+    <div class="modal-body" style="background:linear-gradient(170deg,#fff9f3,white);">
+      <div style="text-align:center;padding:12px 0 20px;">
+        <div style="font-size:3rem;margin-bottom:8px;">🐾</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;color:var(--amber);">Bloop Plus</div>
+        <div style="font-size:0.85rem;color:var(--muted);margin-top:4px;">Everything you need for unlimited pet care</div>
+      </div>
+      <div style="background:var(--bg);border-radius:var(--r-sm);padding:16px;margin-bottom:16px;">
+        <div style="font-size:0.78rem;line-height:1.9;">
+          ✅ <strong>Unlimited document storage</strong><br>
+          ✅ <strong>Unlimited AI chat queries</strong><br>
+          ✅ <strong>Up to 10 pet profiles</strong><br>
+          ✅ <strong>Priority support</strong><br>
+          ✅ <strong>Pet insurance recommendations</strong>
+        </div>
+      </div>
+      <div style="text-align:center;margin-bottom:14px;">
+        <div style="font-family:'Syne',sans-serif;font-size:2.2rem;font-weight:800;color:var(--ink);">$4.99<span style="font-size:1rem;font-weight:400;color:var(--muted);">/month</span></div>
+        <div style="font-size:0.72rem;color:var(--muted);">Cancel anytime · 7-day free trial</div>
+      </div>
+      <button class="cta-btn" style="background:var(--amber);color:white;width:100%;justify-content:center;padding:14px;font-size:0.95rem;margin-bottom:8px;" onclick="closeModal('modal-upgrade');showToast('🎉 Welcome to Bloop Plus!')">Start Free Trial →</button>
+      <button class="cta-btn secondary" style="width:100%;justify-content:center;" onclick="closeModal('modal-upgrade')">Maybe later</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── State ──
+  const visited = new Set(['onboarding']);
+  const flowOrder = ['onboarding','dashboard','chat','docs','share','settings'];
+
+  // ── Show Flow ──
+  function showFlow(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('flow-' + name).classList.add('active');
+
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    const navEl = document.getElementById('nav-' + name);
+    if (navEl) navEl.classList.add('active');
+
+    visited.add(name);
+    updateProgress();
+
+    // Reset active screen card in new flow
+    document.querySelectorAll('.screen-card').forEach(c => c.classList.remove('active'));
+    const firstCard = document.querySelector('#flow-' + name + ' .screen-card');
+    if (firstCard) firstCard.classList.add('active');
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ── Progress ──
+  function updateProgress() {
+    const count = visited.size;
+    const pct = Math.round((count / 6) * 100);
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-label').textContent = count + ' of 6 flows visited';
+    // Mark sidebar visited dots
+    visited.forEach(name => {
+      const el = document.getElementById('nav-' + name);
+      if (el && !el.classList.contains('active')) el.classList.add('visited');
+    });
+  }
+
+  // ── Set Active Screen ──
+  function setActive(id) {
+    const parent = document.getElementById(id)?.closest('.flow-canvas') || document.querySelector('.view.active .flow-canvas');
+    if (parent) parent.querySelectorAll('.screen-card').forEach(c => c.classList.remove('active'));
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
+  }
+
+  // ── Modal ──
+  function openModal(id) {
+    document.getElementById(id).classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  function closeOnBg(e, id) {
+    if (e.target === document.getElementById(id)) closeModal(id);
+  }
+
+  // ── Toast ──
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(window._tt);
+    window._tt = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  // ── Keyboard ──
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      document.body.style.overflow = '';
+    }
+    if (e.key === 'ArrowRight') {
+      const cur = flowOrder.indexOf([...document.querySelectorAll('.sidebar-item.active')].map(el => el.id.replace('nav-',''))[0]);
+      if (cur < flowOrder.length - 1) showFlow(flowOrder[cur + 1]);
+    }
+    if (e.key === 'ArrowLeft') {
+      const cur = flowOrder.indexOf([...document.querySelectorAll('.sidebar-item.active')].map(el => el.id.replace('nav-',''))[0]);
+      if (cur > 0) showFlow(flowOrder[cur - 1]);
+    }
+  });
+
+  // init
+  updateProgress();
+</script>
+</body>
+</html>
